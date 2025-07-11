@@ -1,66 +1,73 @@
 #!/usr/bin/env python3
 """
-Web caching module with Redis and request tracking
+Web cache and tracker implementation with Redis
 """
 
-import redis
 import requests
+import redis
 from functools import wraps
+from typing import Callable
 
-# Initialize Redis client (default localhost:6379)
+# Create Redis connection
 redis_client = redis.Redis()
 
 
-def count_requests(method):
+def cache_and_track(expiration: int = 10) -> Callable:
     """
-    Decorator to count how many times a URL is accessed,
-    using key "count:{url}" in Redis.
+    Decorator to cache webpage content with expiration and track access counts
+
+    Args:
+        expiration: Cache expiration time in seconds (default: 10)
     """
-
-    @wraps(method)
-    def wrapper(url: str) -> str:
-        count_key = f"count:{url}"
-        redis_client.incr(count_key)
-        return method(url)
-
-    return wrapper
-
-
-def cache_page(expiration: int = 10):
-    """
-    Decorator to cache the HTML content of a URL in Redis with an expiration.
-    Cache key: "cached:{url}"
-    """
-
-    def decorator(method):
-        @wraps(method)
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(url: str) -> str:
-            cache_key = f"cached:{url}"
-            cached = redis_client.get(cache_key)
-            if cached:
-                return cached.decode('utf-8')
+            # Track URL access count
+            count_key = f"count:{url}"
+            redis_client.incr(count_key)
 
-            page = method(url)
-            redis_client.setex(cache_key, expiration, page)
-            return page
+            # Check if content is cached
+            cache_key = f"cache:{url}"
+            cached_content = redis_client.get(cache_key)
 
+            if cached_content:
+                return cached_content.decode('utf-8')
+
+            # If not cached, fetch the content
+            content = func(url)
+
+            # Cache the content with expiration
+            redis_client.setex(cache_key, expiration, content)
+
+            return content
         return wrapper
-
     return decorator
 
 
-@count_requests
-@cache_page(expiration=10)
+@cache_and_track(expiration=10)
 def get_page(url: str) -> str:
     """
-    Fetch the HTML content of the URL using requests and return it.
+    Get the HTML content of a URL
 
     Args:
-        url: URL string
+        url: URL to fetch
 
     Returns:
         HTML content as string
     """
     response = requests.get(url)
-    response.raise_for_status()
     return response.text
+
+
+if __name__ == "__main__":
+    # Test with a slow URL
+    slow_url = "http://slowwly.robertomurray.co.uk/delay/1000/url/http://www.google.com"
+
+    # First call - will be slow and cached
+    print(get_page(slow_url)[:100] + "...")  # Print first 100 chars
+
+    # Subsequent calls within 10 seconds will be fast (from cache)
+    print(get_page(slow_url)[:100] + "...")
+
+    # Check access count
+    print(f"Access count for {slow_url}: {redis_client.get(f'count:{slow_url}').decode('utf-8')}")
