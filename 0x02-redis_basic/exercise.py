@@ -1,11 +1,29 @@
 #!/usr/bin/env python3
 """
-Module for caching data with Redis
+Module for caching data with Redis and tracking method calls
 """
 
 import redis
 import uuid
 from typing import Union, Optional, Callable
+from functools import wraps
+
+
+def count_calls(method: Callable) -> Callable:
+    """
+    Decorator to count how many times a method is called.
+
+    Stores the count in Redis using the method's qualified name.
+    """
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        """Increments the call count and calls the method"""
+        key = method.__qualname__
+        self._redis.incr(key)
+        return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Cache:
@@ -16,6 +34,7 @@ class Cache:
         self._redis = redis.Redis()
         self._redis.flushdb()
 
+    @count_calls
     def store(self, data: Union[str, bytes, int, float]) -> str:
         """
         Store the given data in Redis using a random key.
@@ -30,8 +49,9 @@ class Cache:
         self._redis.set(key, data)
         return key
 
-    def get(self, key: str, fn: Optional[Callable] = None
-            ) -> Union[bytes, str, int, None]:
+    def get(
+        self, key: str, fn: Optional[Callable] = None
+    ) -> Union[bytes, str, int, None]:
         """
         Retrieve value from Redis and optionally apply conversion function
 

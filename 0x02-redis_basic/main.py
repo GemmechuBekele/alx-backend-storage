@@ -28,3 +28,10 @@ for value, fn in TEST_CASES.items():
     assert cache.get(key, fn=fn) == value, f"Failed for value: {value}"
 
 print("All test cases passed!")
+
+cache.store(b"first")
+print(cache.get(cache.store.__qualname__))  # Expect b'1'
+
+cache.store(b"second")
+cache.store(b"third")
+print(cache.get(cache.store.__qualname__))  # Expect b'3'
