@@ -48,3 +48,9 @@ outputs = cache._redis.lrange(f"{cache.store.__qualname__}:outputs", 0, -1)
 
 print("inputs:", inputs)
 print("outputs:", outputs)
+
+cache.store("foo")
+cache.store("bar")
+cache.store(42)
+
+replay(cache.store)
